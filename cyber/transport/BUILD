@@ -414,6 +414,9 @@ cc_library(
         "//cyber/common:log",
         "//cyber/common:util",
     ],
+    linkopts = [
+        "-lrt",
+    ],
 )
 
 cc_library(

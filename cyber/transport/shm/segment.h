@@ -19,7 +19,8 @@
 
 #include <stdint.h>
 #include <sys/ipc.h>
-#include <sys/shm.h>
+//#include <sys/shm.h>
+#include <sys/mman.h>
 #include <sys/types.h>
 #include <cstddef>
 #include <memory>
@@ -75,6 +76,7 @@ class Segment final {
 
   bool init_;
   key_t id_;
+  char name_[255];
   ReadWriteMode mode_;
   ShmConf conf_;
 

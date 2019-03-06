@@ -21,7 +21,7 @@ namespace apollo {
 namespace cyber {
 namespace transport {
 
-ShmConf::ShmConf() { Update(MESSAGE_SIZE_16K); }
+ShmConf::ShmConf() { Update(MESSAGE_SIZE_1M); }
 
 ShmConf::ShmConf(const uint64_t& real_msg_size) { Update(real_msg_size); }
 

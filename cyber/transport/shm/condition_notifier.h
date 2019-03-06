@@ -57,6 +57,7 @@ class ConditionNotifier : public NotifierBase {
   void Reset();
 
   key_t key_ = 0;
+  char name_[255];
   void* managed_shm_ = nullptr;
   size_t shm_size_ = 0;
   Indicator* indicator_ = nullptr;

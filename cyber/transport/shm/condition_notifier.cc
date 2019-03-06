@@ -18,8 +18,10 @@
 
 #include <pthread.h>
 #include <sys/ipc.h>
-#include <sys/shm.h>
+//#include <sys/shm.h>
+#include <sys/mman.h>
 #include <thread>
+#include <fcntl.h>
 
 #include "cyber/common/log.h"
 #include "cyber/common/util.h"
@@ -33,6 +35,7 @@ using common::Hash;
 ConditionNotifier::ConditionNotifier() {
   key_ = static_cast<key_t>(Hash("/apollo/cyber/transport/shm/notifier"));
   ADEBUG << "condition notifier key: " << key_;
+  sprintf(name_, "/cn%u", key_);
   shm_size_ = sizeof(Indicator);
 
   if (!Init()) {
@@ -116,15 +119,23 @@ bool ConditionNotifier::Init() { return OpenOrCreate(); }
 bool ConditionNotifier::OpenOrCreate() {
   // create managed_shm_
   int retry = 0;
-  int shmid = 0;
+  int shmfd = 0;
   while (retry < 2) {
-    shmid = shmget(key_, shm_size_, 0644 | IPC_CREAT | IPC_EXCL);
-    if (shmid != -1) {
+    // shmid = shmget(key_, shm_size_, 0644 | IPC_CREAT | IPC_EXCL);
+    shmfd = shm_open(name_, O_RDWR | O_EXCL | O_CREAT, 0644);
+    if (shmfd != -1) {
+      errno = 0;
+      int ret = ftruncate(shmfd, shm_size_);
+      if (ret != 0) {
+        AERROR << "ftruncate falied: errno = " << errno;
+        return false;
+      }
       break;
     }
 
     if (EINVAL == errno) {
-      AINFO << "need larger space, recreate.";
+      //AINFO << "need larger space, recreate.";
+      AINFO << "argument name: " << name_ << " invalid";
       Reset();
       Remove();
       ++retry;
@@ -136,16 +147,20 @@ bool ConditionNotifier::OpenOrCreate() {
     }
   }
 
-  if (shmid == -1) {
+  if (shmfd == -1) {
     AERROR << "create shm failed, error code: " << strerror(errno);
     return false;
   }
 
   // attach managed_shm_
-  managed_shm_ = shmat(shmid, nullptr, 0);
-  if (managed_shm_ == reinterpret_cast<void*>(-1)) {
+  // managed_shm_ = shmat(shmid, nullptr, 0);
+  managed_shm_ = mmap(0, shm_size_, PROT_READ | PROT_WRITE,
+                      MAP_SHARED, shmfd, 0);
+  // if (managed_shm_ == reinterpret_cast<void*>(-1)) {
+  if (managed_shm_ == MAP_FAILED) {
     AERROR << "attach shm failed.";
-    shmctl(shmid, IPC_RMID, 0);
+    // shmctl(shmid, IPC_RMID, 0);
+    shm_unlink(name_);
     return false;
   }
 
@@ -153,9 +168,11 @@ bool ConditionNotifier::OpenOrCreate() {
   indicator_ = new (managed_shm_) Indicator();
   if (indicator_ == nullptr) {
     AERROR << "create indicator failed.";
-    shmdt(managed_shm_);
+    // shmdt(managed_shm_);
+    munmap(managed_shm_, shm_size_);
     managed_shm_ = nullptr;
-    shmctl(shmid, IPC_RMID, 0);
+    // shmctl(shmid, IPC_RMID, 0);
+    shm_unlink(name_);
     return false;
   }
 
@@ -175,15 +192,19 @@ bool ConditionNotifier::OpenOrCreate() {
 
 bool ConditionNotifier::OpenOnly() {
   // get managed_shm_
-  int shmid = shmget(key_, 0, 0644);
-  if (shmid == -1) {
+  // int shmid = shmget(key_, 0, 0644);
+  int shmfd = shm_open(name_, O_RDWR, 0644);
+  if (shmfd == -1) {
     AERROR << "get shm failed.";
     return false;
   }
 
   // attach managed_shm_
-  managed_shm_ = shmat(shmid, nullptr, 0);
-  if (managed_shm_ == reinterpret_cast<void*>(-1)) {
+  // managed_shm_ = shmat(shmid, nullptr, 0);
+  managed_shm_ = mmap(0, shm_size_, PROT_READ | PROT_WRITE,
+                      MAP_SHARED, shmfd, 0);
+  // if (managed_shm_ == reinterpret_cast<void*>(-1)) {
+  if (managed_shm_ == MAP_FAILED) {
     AERROR << "attach shm failed.";
     return false;
   }
@@ -192,7 +213,8 @@ bool ConditionNotifier::OpenOnly() {
   indicator_ = reinterpret_cast<Indicator*>(managed_shm_);
   if (indicator_ == nullptr) {
     AERROR << "get indicator failed.";
-    shmdt(managed_shm_);
+    // shmdt(managed_shm_);
+    munmap(managed_shm_, shm_size_);
     managed_shm_ = nullptr;
     return false;
   }
@@ -202,8 +224,9 @@ bool ConditionNotifier::OpenOnly() {
 }
 
 bool ConditionNotifier::Remove() {
-  int shmid = shmget(key_, 0, 0644);
-  if (shmid == -1 || shmctl(shmid, IPC_RMID, 0) == -1) {
+  // int shmid = shmget(key_, 0, 0644);
+  int shmfd = shm_open(name_, O_RDWR, 0644);
+  if (shmfd == -1 || shm_unlink(name_) == -1 /* shmctl(shmid, IPC_RMID, 0) == -1 */) {
     AERROR << "remove shm failed, error code: " << strerror(errno);
     return false;
   }
@@ -215,7 +238,8 @@ bool ConditionNotifier::Remove() {
 void ConditionNotifier::Reset() {
   indicator_ = nullptr;
   if (managed_shm_ != nullptr) {
-    shmdt(managed_shm_);
+    // shmdt(managed_shm_);
+    munmap(managed_shm_, shm_size_);
     managed_shm_ = nullptr;
   }
 }
