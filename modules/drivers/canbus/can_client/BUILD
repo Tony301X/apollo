@@ -17,6 +17,7 @@ cc_library(
         "//modules/drivers/canbus/can_client/fake:fake_can_client",
         "//modules/drivers/canbus/can_client/hermes_can:hermes_can_client",
         "//modules/drivers/canbus/can_client/socket:socket_can_client_raw",
+        "//modules/drivers/canbus/can_client/s32_can:s32_can_client_raw",
         "//modules/drivers/canbus/common:canbus_common",
         "//modules/drivers/canbus/proto:canbus_proto",
     ] + select({
